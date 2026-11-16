@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Grade 8 Science Practice Assessment</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app"></div>
+<script src="config.js"></script>
+<script src="fig.js"></script>
+<script src="questions.js"></script>
+<script src="shared.js"></script>
+<script>
+/* Student page: open with the link the teacher makes in teacher.html (index.html?a=...). */
+(function () {
+  var app = document.getElementById('app'), CFG = SCI.CFG, el = SCI.el, esc = SCI.esc;
+  var code = new URLSearchParams(location.search).get('a');
+  var A = code ? SCI.decodeAssessment(code) : null;
+  var S = null, key = null, tick = null, fontPx = 16;
+
+  function frame(title) {
+    app.innerHTML = '';
+    var f = el('div', 'frame'); app.appendChild(f); return f;
+  }
+  function noLink() {
+    var f = frame(); var g = el('div', 'gate');
+    g.innerHTML = '<div class="card"><h1>Grade 8 Science Practice</h1><p>This page needs a link from your teacher.</p><p>Open the link your teacher posted in Google Classroom. If you already did, ask your teacher for a new link.</p></div>';
+    f.appendChild(g);
+  }
+  function normName() { return (S.first + '|' + S.last + '|' + S.period).toLowerCase().replace(/\s+/g, ' ').trim(); }
+  function persist() { SCI.store(key, S); }
+
+  /* ---------- name gate ---------- */
+  function gate() {
+    var f = frame(); var g = el('div', 'gate');
+    var mode = SCI.SAVE.mode();
+    g.innerHTML = '<div class="card"><h1>' + esc(A.title) + '</h1><p class="muted">' + esc(CFG.COURSE || '') + ' &middot; ' + A.ids.length + ' questions' + (A.minutes ? ' &middot; ' + A.minutes + ' minutes' : '') + '</p>' +
+      (mode === 'local' ? '<div class="banner warn"><b>Practice mode.</b> Your answers will be saved only on this computer. They will <b>not</b> go to your teacher.</div>' : '') +
+      '<div class="field"><label for="fn">First name</label><input id="fn" autocomplete="off"></div>' +
+      '<div class="field"><label for="ln">Last name</label><input id="ln" autocomplete="off"></div>' +
+      '<div class="field"><label for="pd">Class period</label><select id="pd"><option value="">Choose your period</option>' + (CFG.PERIODS || []).map(function (p) { return '<option>' + esc(p) + '</option>'; }).join('') + '</select></div>' +
+      '<div id="gerr" class="banner bad hidden"></div><button class="tbtn primary" id="go" style="font-size:1.1rem;padding:10px 24px">Begin</button></div>';
+    f.appendChild(g);
+    document.getElementById('go').onclick = function () {
+      var first = document.getElementById('fn').value.trim(), last = document.getElementById('ln').value.trim(), pd = document.getElementById('pd').value;
+      var err = document.getElementById('gerr');
+      if (!first || !last || !pd) { err.textContent = 'Please enter your first name, last name, and class period.'; err.classList.remove('hidden'); return; }
+      S = { first: first, last: last, period: pd, idx: 0, resp: {}, flag: {}, start: Date.now(), sub: 'S' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), done: false };
+      key = 'sci_prog_' + A.id + '_' + normName();
+      var old = SCI.store(key);
+      if (old && old.sub) {
+        if (old.done) { S = old; return finish(old.payload, true); }
+        S = old; S.first = first; S.last = last;
+      }
+      persist(); test();
+    };
+    document.getElementById('fn').focus();
+  }
+
+  /* ---------- test screen ---------- */
+  function test() {
+    var f = frame(), n = A.ids.length;
+    var top = el('div', 'topbar'), mid = el('div'), bot = el('div', 'bottombar');
+    var ttl = el('div', 'ttl', esc(A.title) + ' &middot; ' + esc(S.first) + ' ' + esc(S.last));
+    var tools = el('div', 'tools'), timerEl = el('span', 'ttl', '');
+    var bMinus = el('button', 'tbtn', 'A-'), bPlus = el('button', 'tbtn', 'A+'), bFlag = el('button', 'tbtn', '&#9873; Mark for review'), bRev = el('button', 'tbtn primary', 'Review and submit');
+    bMinus.title = 'Smaller text'; bPlus.title = 'Larger text';
+    bMinus.onclick = function () { fontPx = Math.max(13, fontPx - 2); document.documentElement.style.fontSize = fontPx + 'px'; };
+    bPlus.onclick = function () { fontPx = Math.min(24, fontPx + 2); document.documentElement.style.fontSize = fontPx + 'px'; };
+    tools.appendChild(timerEl); tools.appendChild(bMinus); tools.appendChild(bPlus); tools.appendChild(bFlag); tools.appendChild(bRev);
+    top.appendChild(ttl); top.appendChild(tools);
+    var bPrev = el('button', 'tbtn', '&larr; Previous'), bNext = el('button', 'tbtn primary', 'Next &rarr;'), tiles = el('div', 'tiles');
+    bot.appendChild(bPrev); bot.appendChild(tiles); bot.appendChild(bNext);
+    f.appendChild(top); f.appendChild(mid); mid.style.flex = '1'; mid.style.display = 'flex'; mid.style.flexDirection = 'column';
+    f.appendChild(bot);
+
+    function drawTiles() {
+      tiles.innerHTML = '';
+      A.ids.forEach(function (id, i) {
+        var b = el('button', 'tile-btn' + (SCI.answered(SCI.byId[id], S.resp[id]) ? ' done' : '') + (S.flag[id] ? ' flag' : '') + (i === S.idx ? ' cur' : ''), String(i + 1));
+        b.type = 'button'; b.setAttribute('aria-label', 'Question ' + (i + 1)); b.onclick = function () { S.idx = i; persist(); show(); };
+        tiles.appendChild(b);
+      });
+    }
+    function show() {
+      var id = A.ids[S.idx], q = SCI.byId[id];
+      var holder = el('div'); holder.style.flex = '1'; mid.innerHTML = ''; mid.appendChild(holder);
+      holder.className = 'qholder';
+      SCI.renderItem(q, holder, { qno: S.idx + 1, of: n, resp: S.resp[id] === undefined ? SCI.blank(q) : S.resp[id], seed: S.sub, shuffle: A.shuffle,
+        onChange: function (v) { S.resp[id] = v; persist(); drawTiles(); } });
+      holder.querySelector('.main').style.minHeight = '60vh';
+      bPrev.disabled = S.idx === 0;
+      bNext.innerHTML = S.idx === n - 1 ? 'Review answers' : 'Next &rarr;';
+      bFlag.innerHTML = S.flag[id] ? '&#9873; Unmark' : '&#9873; Mark for review';
+      drawTiles(); window.scrollTo(0, 0);
+    }
+    bPrev.onclick = function () { if (S.idx > 0) { S.idx--; persist(); show(); } };
+    bNext.onclick = function () { if (S.idx < n - 1) { S.idx++; persist(); show(); } else review(); };
+    bFlag.onclick = function () { var id = A.ids[S.idx]; S.flag[id] = !S.flag[id]; persist(); show(); };
+    bRev.onclick = review;
+    window.onbeforeunload = function () { return S && !S.done ? 'Your test is not submitted yet.' : undefined; };
+    if (A.minutes) {
+      var endAt = S.start + A.minutes * 60000;
+      var upd = function () {
+        var left = Math.max(0, endAt - Date.now()), m = Math.floor(left / 60000), s = Math.floor(left % 60000 / 1000);
+        timerEl.textContent = 'Time left: ' + m + ':' + (s < 10 ? '0' : '') + s;
+        if (left <= 0) { clearInterval(tick); submit(true); }
+      };
+      clearInterval(tick); tick = setInterval(upd, 1000); upd();
+    }
+    show();
+  }
+
+  /* ---------- review ---------- */
+  function review() {
+    var f = frame(), w = el('div', 'wrapper'), n = A.ids.length;
+    var unanswered = A.ids.filter(function (id) { return !SCI.answered(SCI.byId[id], S.resp[id]); });
+    w.innerHTML = '<h1>Review your answers</h1><p>' + (unanswered.length ? '<b>' + unanswered.length + ' question' + (unanswered.length > 1 ? 's are' : ' is') + ' not answered.</b> Click a question to go back to it.' : 'All questions are answered. Click a question to check it again, or submit when you are ready.') + '</p>';
+    var list = el('div', 'revlist');
+    A.ids.forEach(function (id, i) {
+      var done = SCI.answered(SCI.byId[id], S.resp[id]);
+      var b = el('button', 'revitem ' + (done ? 'done' : 'todo'), '<b>Question ' + (i + 1) + '</b><br>' + (done ? 'Answered' : 'Not answered') + (S.flag[id] ? ' &middot; &#9873; marked' : ''));
+      b.type = 'button'; b.onclick = function () { S.idx = i; persist(); test(); }; list.appendChild(b);
+    });
+    w.appendChild(list);
+    var back = el('button', 'tbtn', '&larr; Back to the test'), sub = el('button', 'tbtn primary', 'Submit my test');
+    sub.style.marginLeft = '10px'; sub.style.padding = '10px 22px';
+    back.onclick = function () { test(); };
+    sub.onclick = function () { if (!unanswered.length || confirm('You have ' + unanswered.length + ' unanswered question' + (unanswered.length > 1 ? 's' : '') + '. Submit anyway?')) submit(false); };
+    w.appendChild(back); w.appendChild(sub); f.appendChild(w);
+  }
+
+  /* ---------- submit ---------- */
+  function buildPayload() {
+    var e = 0, p = 0, items = A.ids.map(function (id) {
+      var q = SCI.byId[id], a = S.resp[id], sc = SCI.score(q, a === undefined ? null : a);
+      e += sc.e; p += q.p;
+      return { id: id, std: q.std, dok: q.dok, t: q.t, p: q.p, e: sc.e, r: a === undefined ? null : a, tg: sc.tags };
+    });
+    return { v: 1, sub: S.sub, aid: A.id, title: A.title, first: S.first, last: S.last, period: S.period, score: e, possible: p,
+      secs: Math.round((Date.now() - S.start) / 1000), at: new Date().toISOString(), items: items };
+  }
+  function submit(timeUp) {
+    clearInterval(tick); window.onbeforeunload = null;
+    var payload = buildPayload();
+    S.done = true; S.payload = payload; persist();
+    var f = frame(), g = el('div', 'gate');
+    g.innerHTML = '<div class="card"><h2>' + (timeUp ? 'Time is up. ' : '') + 'Saving your test...</h2><p class="muted">Please wait. Do not close this page.</p></div>'; f.appendChild(g);
+    SCI.SAVE.submit(payload).then(function (res) { finish(payload, false, res); });
+  }
+
+  /* ---------- finish ---------- */
+  function finish(payload, already, res) {
+    var f = frame(), w = el('div', 'wrapper'); f.appendChild(w);
+    var pct = payload.possible ? Math.round(100 * payload.score / payload.possible) : 0;
+    var html = '<h1>' + esc(A.title) + '</h1>';
+    if (already) html += '<div class="banner info">You already submitted this test on this computer. Here is your result. Ask your teacher if you may retake it.</div>';
+    if (res && res.ok && res.local) html += '<div class="banner warn"><b>Practice mode.</b> Your answers were saved on this computer only. They were <b>not</b> sent to your teacher.</div>';
+    else if (res && res.ok) html += '<div class="banner good"><b>Your test was saved and sent to your teacher.</b></div>';
+    else if (res && !res.ok) html += '<div class="banner bad"><b>Your answers did NOT reach your teacher yet.</b> They are safe on this Chromebook. Check your internet connection, then click Try again. If it still fails, tell your teacher before you close this page.<br><small>' + esc(res.error) + '</small><br><button class="tbtn primary" id="retry" style="margin-top:8px">Try again</button></div>';
+    if (A.feedback === 'none') html += '<div class="card"><p>Your answers have been submitted. Your teacher will go over the results with you.</p></div>';
+    else html += '<div class="card"><div>Your score</div><div class="bigscore">' + payload.score + ' / ' + payload.possible + ' &nbsp; (' + pct + '%)</div><div id="stdlist"></div></div>';
+    w.innerHTML = html;
+    var rb = document.getElementById('retry');
+    if (rb) rb.onclick = function () { rb.disabled = true; rb.textContent = 'Trying...'; SCI.SAVE.submit(payload).then(function (r2) { finish(payload, false, r2); }); };
+    if (A.feedback === 'none') return;
+    var by = {}; payload.items.forEach(function (it) { var b = by[it.std] || (by[it.std] = { e: 0, p: 0 }); b.e += it.e; b.p += it.p; });
+    var sl = document.getElementById('stdlist'); sl.innerHTML = '<h3 style="margin-top:14px">By topic</h3>';
+    Object.keys(by).sort().forEach(function (s) {
+      var pc = Math.round(100 * by[s].e / by[s].p), cls = pc >= 80 ? 'hi' : pc >= 60 ? 'mid' : 'low';
+      sl.appendChild(el('div', 'stdbar', '<span>' + esc(STANDARDS[s].short) + '</span><div class="bar"><i class="' + cls + '" style="width:' + pc + '%"></i></div><span>' + by[s].e + '/' + by[s].p + '</span>'));
+    });
+    if (A.feedback === 'full') {
+      w.appendChild(el('h2', '', 'Go over each question'));
+      payload.items.forEach(function (it, i) {
+        var q = SCI.byId[it.id], box = el('div', 'reviewcard');
+        var sc = SCI.score(q, it.r);
+        box.appendChild(el('div', 'rh', '<span>Question ' + (i + 1) + '</span><span>' + sc.e + ' / ' + q.p + '</span>'));
+        var m = el('div'); box.appendChild(m);
+        SCI.renderItem(q, m, { resp: it.r === null ? SCI.blank(q) : it.r, seed: payload.sub, shuffle: A.shuffle, locked: true, reveal: true, why: true });
+        w.appendChild(box);
+      });
+    }
+    window.scrollTo(0, 0);
+  }
+
+  /* ---------- start ---------- */
+  if (!A) { noLink(); return; }
+  document.title = A.title;
+  gate();
+  /* send anything that failed to save last time (server mode only) */
+  if (CFG.SCRIPT_URL) { SCI.SAVE.outbox().forEach(function (p) { SCI.SAVE.post(p).then(function () { SCI.store('sci_outbox', SCI.SAVE.outbox().filter(function (x) { return x.sub !== p.sub; })); }, function () { }); }); }
+})();
+</script>
+</body>
+</html>

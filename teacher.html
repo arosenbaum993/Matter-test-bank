@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Teacher Tool: Grade 8 Science Matter Item Bank</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app" class="tt"></div>
+<div id="printArea"></div>
+<script src="config.js"></script>
+<script src="fig.js"></script>
+<script src="questions.js"></script>
+<script src="shared.js"></script>
+<script>
+(function () {
+  var el = SCI.el, esc = SCI.esc, CFG = SCI.CFG, byId = SCI.byId;
+  var TYPE_NAME = { mc: 'Multiple choice', ms: 'Select multiple', dd: 'Drop-down', dnd: 'Drag and drop', mp: 'Two-part' };
+  var saved = SCI.store('sci_teacher_build') || {};
+  var T = { sel: saved.sel || [], title: saved.title || '', shuffle: saved.shuffle !== false, feedback: saved.feedback || 'full', minutes: saved.minutes || 0,
+    f: { wk: '', std: '', dok: '', type: '', q: '', hideExt: false }, open: {} };
+  function save() { SCI.store('sci_teacher_build', { sel: T.sel, title: T.title, shuffle: T.shuffle, feedback: T.feedback, minutes: T.minutes }); }
+  var app = document.getElementById('app');
+
+  /* ---------- shell ---------- */
+  var mode = SCI.SAVE.mode();
+  app.innerHTML =
+    '<header><div><h1 style="margin:0">Grade 8 Science: Matter Item Bank</h1><div class="muted">Unit 5 &middot; S8P1 &middot; ' + Q.length + ' Georgia Milestones-style items &middot; built from the weekly plan</div></div><div id="modeBadge"></div></header>' +
+    '<div id="fileWarn"></div>' +
+    '<div class="tabs"><div class="tab on" data-t="Build">1. Build an assessment</div><div class="tab" data-t="Results">2. Student results</div><div class="tab" data-t="Map">Bank map and printing</div></div>' +
+    '<section id="tabBuild"></section><section id="tabResults" class="hidden"></section><section id="tabMap" class="hidden"></section>';
+  document.getElementById('modeBadge').innerHTML = mode === 'server'
+    ? '<span class="banner good" style="display:inline-block;margin:0">Results save to your Google Sheet</span>'
+    : '<span class="banner warn" style="display:inline-block;margin:0"><b>Practice mode:</b> results stay on this computer. Connect your Sheet in config.js (README step 3).</span>';
+  if (location.protocol === 'file:') document.getElementById('fileWarn').innerHTML = '<div class="banner warn">You opened this page from a file on your computer. Student links made here will not work for students. Open this page from the website address where you uploaded the files (README step 2), then make the link.</div>';
+  Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (t) {
+    t.onclick = function () {
+      Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (x) { x.classList.toggle('on', x === t); });
+      ['Build', 'Results', 'Map'].forEach(function (n) { document.getElementById('tab' + n).classList.toggle('hidden', n !== t.getAttribute('data-t')); });
+      if (t.getAttribute('data-t') === 'Results') resultsHome();
+    };
+  });
+
+  /* =====================  BUILD TAB  ===================== */
+  var B = document.getElementById('tabBuild');
+  B.innerHTML = '<div class="presets" id="presets"></div><div class="build"><div><div class="filters" id="filters"></div><div id="count" class="muted small" style="margin:0 0 8px"></div><div id="list"></div></div><div class="tray-box" id="tray"></div></div>';
+
+  function weekIds(w) { return Q.filter(function (q) { return q.wk === w; }).map(function (q) { return q.id; }); }
+  function pre() {
+    var p = document.getElementById('presets'); p.innerHTML = '<b style="align-self:center">Start from a weekly set:</b>';
+    [1, 2, 3, 4, 5].forEach(function (w) {
+      var b = el('button', 'tbtn', w === 5 ? 'Week 5 unit test set' : 'Week ' + w + ' Friday quiz set'); b.type = 'button';
+      b.title = WEEKS[w].title; b.onclick = function () { T.sel = weekIds(w); T.title = w === 5 ? 'Unit 5 Matter Test (practice)' : 'Week ' + w + ' Quiz: ' + WEEKS[w].title.replace(/^Week \d: /, ''); save(); draw(); drawTray(); };
+      p.appendChild(b);
+    });
+    var c = el('button', 'tbtn', 'Clear'); c.type = 'button'; c.onclick = function () { T.sel = []; save(); draw(); drawTray(); }; p.appendChild(c);
+  }
+  function filt() {
+    var f = document.getElementById('filters');
+    function sel(id, label, opts) { return '<div><label for="' + id + '">' + label + '</label><select id="' + id + '">' + opts.map(function (o) { return '<option value="' + o[0] + '">' + esc(o[1]) + '</option>'; }).join('') + '</select></div>'; }
+    f.innerHTML = sel('fw', 'Week', [['', 'All weeks']].concat([1, 2, 3, 4, 5].map(function (w) { return [w, WEEKS[w].title]; }))) +
+      sel('fs', 'Standard', [['', 'All standards']].concat(Object.keys(STANDARDS).map(function (s) { return [s, s + ' ' + STANDARDS[s].short]; }))) +
+      sel('fd', 'DOK', [['', 'All'], ['1', 'DOK 1'], ['2', 'DOK 2'], ['3', 'DOK 3']]) +
+      sel('ft', 'Item type', [['', 'All types']].concat(Object.keys(TYPE_NAME).map(function (t) { return [t, TYPE_NAME[t]]; }))) +
+      '<div><label for="fq">Search</label><input id="fq" placeholder="word in the question"></div>' +
+      '<div><label><input type="checkbox" id="fe"> Hide items beyond GaDOE notes</label></div>' +
+      '<div><button class="tbtn" id="selShown" type="button">Select all shown</button></div>';
+    var map = { fw: 'wk', fs: 'std', fd: 'dok', ft: 'type' };
+    Object.keys(map).forEach(function (id) { document.getElementById(id).onchange = function (e) { T.f[map[id]] = e.target.value; draw(); }; });
+    document.getElementById('fq').oninput = function (e) { T.f.q = e.target.value.toLowerCase(); draw(); };
+    document.getElementById('fe').onchange = function (e) { T.f.hideExt = e.target.checked; draw(); };
+    document.getElementById('selShown').onclick = function () { shown().forEach(function (q) { if (T.sel.indexOf(q.id) < 0) T.sel.push(q.id); }); save(); draw(); drawTray(); };
+  }
+  function qtext(q) { return SCI.strip(q.stem || '') + ' ' + SCI.strip(q.cloze || '') + ' ' + (q.parts ? q.parts.map(function (p) { return SCI.strip(p.q); }).join(' ') : ''); }
+  function shown() {
+    return Q.filter(function (q) {
+      var f = T.f;
+      if (f.wk && q.wk !== +f.wk) return false; if (f.std && q.std !== f.std) return false; if (f.dok && q.dok !== +f.dok) return false; if (f.type && q.t !== f.type) return false;
+      if (f.hideExt && q.ext) return false; if (f.q && (qtext(q) + ' ' + q.id).toLowerCase().indexOf(f.q) < 0) return false; return true;
+    });
+  }
+  function draw() {
+    var list = document.getElementById('list'), items = shown(); list.innerHTML = '';
+    document.getElementById('count').textContent = items.length + ' of ' + Q.length + ' items shown';
+    items.forEach(function (q) {
+      var on = T.sel.indexOf(q.id) > -1, c = el('div', 'icard' + (on ? ' on' : ''));
+      var head = el('div', 'ihead'), cb = el('input'); cb.type = 'checkbox'; cb.checked = on; cb.setAttribute('aria-label', 'Select ' + q.id);
+      cb.onchange = function () { var at = T.sel.indexOf(q.id); if (cb.checked && at < 0) T.sel.push(q.id); if (!cb.checked && at > -1) T.sel.splice(at, 1); save(); c.classList.toggle('on', cb.checked); drawTray(); };
+      var meta = el('div', 'meta'), txt = qtext(q); if (txt.length > 190) txt = txt.slice(0, 187) + '...';
+      meta.innerHTML = '<div class="badges"><span class="badge id">' + q.id + '</span><span class="badge">' + q.std + ' ' + esc(STANDARDS[q.std].short) + '</span><span class="badge d' + q.dok + '">DOK ' + q.dok + '</span><span class="badge">' + TYPE_NAME[q.t] + '</span>' +
+        (q.p === 2 ? '<span class="badge p2">2 points</span>' : '') + (q.ext ? '<span class="badge ext" title="Goes a little past the GaDOE teacher notes (judging whether an equation is balanced). It follows the unit success criteria.">beyond GaDOE notes</span>' : '') + '</div><div class="snippet">' + esc(txt) + '</div>';
+      var pv = el('button', 'mini', T.open[q.id] ? 'Hide' : 'Preview'); pv.type = 'button';
+      var prev = el('div', 'ipreview' + (T.open[q.id] ? '' : ' hidden'));
+      function paintPrev() { prev.innerHTML = ''; var m = el('div'); prev.appendChild(m); SCI.renderItem(q, m, { locked: true, reveal: true, why: true, resp: previewKey(q), shuffle: false }); }
+      if (T.open[q.id]) paintPrev();
+      pv.onclick = function () { T.open[q.id] = !T.open[q.id]; pv.textContent = T.open[q.id] ? 'Hide' : 'Preview'; prev.classList.toggle('hidden', !T.open[q.id]); if (T.open[q.id]) paintPrev(); };
+      head.appendChild(cb); head.appendChild(meta); head.appendChild(pv); c.appendChild(head); c.appendChild(prev); list.appendChild(c);
+    });
+  }
+  function previewKey(q) { /* response that equals the answer key, so the preview shows the key in green */
+    if (q.t === 'mc') return q.k; if (q.t === 'ms') return q.k.slice(); if (q.t === 'dd') return q.blanks.map(function (b) { return b.k; });
+    if (q.t === 'dnd') return q.k.slice(); return q.parts.map(function (p) { return p.k; });
+  }
+
+  /* ---------- tray ---------- */
+  function links() { return SCI.store('sci_links') || []; }
+  function base() { return new URL('index.html', location.href).href; }
+  function drawTray() {
+    var t = document.getElementById('tray'), pts = 0, d = [0, 0, 0, 0], stds = {};
+    T.sel.forEach(function (id) { var q = byId[id]; pts += q.p; d[q.dok] += q.p; stds[q.std] = (stds[q.std] || 0) + 1; });
+    t.innerHTML = '<h3>Your assessment</h3>' +
+      '<div class="field"><label for="ttl">Title students see</label><input id="ttl" value="' + esc(T.title) + '" placeholder="Week 1 Quiz: Classifying Matter"></div>' +
+      '<div><b>' + T.sel.length + '</b> items &middot; <b>' + pts + '</b> points' + (T.sel.length && (T.sel.length < 10 || T.sel.length > 15) ? ' <span class="small" style="color:#b45309">(a Friday quiz is usually 10 to 15 items)</span>' : '') + '</div>' +
+      (pts ? '<div class="small muted" style="margin-top:6px">DOK mix by points (Milestones target: DOK 1 about 5 to 15%, DOK 2 about 55 to 65%, DOK 3 about 25 to 35%)</div><div class="dokbar"><i style="width:' + 100 * d[1] / pts + '%"></i><i style="width:' + 100 * d[2] / pts + '%"></i><i style="width:' + 100 * d[3] / pts + '%"></i></div><div class="small">DOK 1: ' + Math.round(100 * d[1] / pts) + '% &middot; DOK 2: ' + Math.round(100 * d[2] / pts) + '% &middot; DOK 3: ' + Math.round(100 * d[3] / pts) + '%</div>' : '') +
+      (T.sel.length ? '<div class="small" style="margin-top:6px"><b>Standards:</b> ' + Object.keys(stds).sort().map(function (s) { return s + ' (' + stds[s] + ')'; }).join(', ') + '</div>' : '<p class="muted small">Pick a weekly set above, or check items in the list.</p>') +
+      '<ul class="sel-list" id="sl"></ul>' +
+      '<div class="field"><label class="inl"><input type="checkbox" id="sh"' + (T.shuffle ? ' checked' : '') + '> Shuffle answer choices for each student</label></div>' +
+      '<div class="field"><label for="fb">After students submit, show them</label><select id="fb"><option value="full">Score, topics, and each question with the answer explained</option><option value="score">Score and topics only</option><option value="none">Nothing (I will review with the class)</option></select></div>' +
+      '<div class="field"><label for="mn">Time limit in minutes (0 = none)</label><input id="mn" type="number" min="0" max="120" value="' + T.minutes + '"></div>' +
+      '<button class="tbtn primary" id="mk" type="button" ' + (T.sel.length ? '' : 'disabled') + '>Create student link</button> ' +
+      '<div id="linkOut"></div>' +
+      '<div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap"><button class="tbtn" id="pS" type="button" ' + (T.sel.length ? '' : 'disabled') + '>Print student copy</button><button class="tbtn" id="pK" type="button" ' + (T.sel.length ? '' : 'disabled') + '>Print answer key</button></div>' +
+      '<div id="recent"></div>';
+    var sl = document.getElementById('sl');
+    T.sel.forEach(function (id, i) {
+      var q = byId[id], li = el('li'); li.innerHTML = '<b>' + (i + 1) + '.</b><span class="t" title="' + esc(qtext(q)) + '">' + id + ' ' + esc(qtext(q).slice(0, 50)) + '</span>';
+      var u = el('button', 'mini', '&uarr;'), dn = el('button', 'mini', '&darr;'), x = el('button', 'mini', '&times;');
+      u.type = dn.type = x.type = 'button'; u.title = 'Move up'; dn.title = 'Move down'; x.title = 'Remove';
+      u.onclick = function () { if (i > 0) { T.sel.splice(i - 1, 0, T.sel.splice(i, 1)[0]); save(); drawTray(); } };
+      dn.onclick = function () { if (i < T.sel.length - 1) { T.sel.splice(i + 1, 0, T.sel.splice(i, 1)[0]); save(); drawTray(); } };
+      x.onclick = function () { T.sel.splice(i, 1); save(); draw(); drawTray(); };
+      li.appendChild(u); li.appendChild(dn); li.appendChild(x); sl.appendChild(li);
+    });
+    document.getElementById('ttl').oninput = function (e) { T.title = e.target.value; save(); };
+    document.getElementById('sh').onchange = function (e) { T.shuffle = e.target.checked; save(); };
+    document.getElementById('fb').value = T.feedback; document.getElementById('fb').onchange = function (e) { T.feedback = e.target.value; save(); };
+    document.getElementById('mn').onchange = function (e) { T.minutes = Math.max(0, Math.min(120, +e.target.value || 0)); save(); };
+    document.getElementById('mk').onclick = function () {
+      var a = { id: SCI.newAid(), title: (T.title || 'Practice assessment').trim(), ids: T.sel.slice(), shuffle: T.shuffle, feedback: T.feedback, minutes: T.minutes };
+      var url = base() + '?a=' + SCI.encodeAssessment(a);
+      var L = links(); L.unshift({ id: a.id, title: a.title, n: a.ids.length, url: url, at: new Date().toISOString() }); SCI.store('sci_links', L.slice(0, 12));
+      showLink(url, a.title); recent();
+    };
+    document.getElementById('pS').onclick = function () { printSet(T.sel, false, T.title); };
+    document.getElementById('pK').onclick = function () { printSet(T.sel, true, T.title); };
+    recent();
+  }
+  function showLink(url, title) {
+    var o = document.getElementById('linkOut'); if (!o) return;
+    o.innerHTML = '<div class="banner good" style="margin-top:10px"><b>Link ready.</b> Post it in Google Classroom as a <b>Material</b> (not an Assignment).<div class="linkbox" id="lk">' + esc(url) + '</div>' +
+      '<button class="tbtn" id="cp" type="button">Copy link</button> <a class="tbtn" style="text-decoration:none;display:inline-block" href="' + esc(url) + '" target="_blank" rel="noopener">Try it as a student</a>' + (mode === 'local' ? '<div class="small" style="margin-top:6px">Practice mode: results from this link stay on this computer.</div>' : '') + '</div>';
+    document.getElementById('cp').onclick = function () { try { navigator.clipboard.writeText(url); this.textContent = 'Copied'; } catch (e) { var r = document.createRange(); r.selectNode(document.getElementById('lk')); getSelection().removeAllRanges(); getSelection().addRange(r); } };
+  }
+  function recent() {
+    var r = document.getElementById('recent'); if (!r) return; var L = links();
+    r.innerHTML = L.length ? '<h4 style="margin:14px 0 4px">Recent links</h4>' : '';
+    L.slice(0, 5).forEach(function (l) { var d = el('div', 'small'); d.style.margin = '4px 0'; d.innerHTML = '<b>' + esc(l.title) + '</b> (' + l.n + ' items) <button class="mini" type="button">Show link</button>'; d.querySelector('button').onclick = function () { showLink(l.url, l.title); }; r.appendChild(d); });
+  }
+
+  /* ---------- printing ---------- */
+  function printSet(ids, withKey, title) {
+    var pa = document.getElementById('printArea'), pts = 0; ids.forEach(function (id) { pts += byId[id].p; });
+    var h = '<div class="phead"><div><b>' + esc(title || 'Grade 8 Science Practice') + '</b><br><span class="small">' + esc(CFG.COURSE || '') + (withKey ? ' &middot; ANSWER KEY' : '') + '</span></div><div class="small">' + (withKey ? ids.length + ' items &middot; ' + pts + ' points' : 'Name: ______________________ &nbsp; Period: ____ &nbsp; Date: ________') + '</div></div>';
+    if (withKey) {
+      h += '<table class="dt" style="width:100%;margin:0 0 14px"><thead><tr><th>#</th><th>Item</th><th>Standard</th><th>DOK</th><th>Pts</th><th>Answer</th></tr></thead><tbody>' +
+        ids.map(function (id, i) { var q = byId[id]; return '<tr><td>' + (i + 1) + '</td><td>' + id + '</td><td>' + q.std + '</td><td>' + q.dok + '</td><td>' + q.p + '</td><td style="text-align:left">' + esc(SCI.keyText(q)) + '</td></tr>'; }).join('') + '</tbody></table><div class="pbreak"></div>';
+    }
+    h += ids.map(function (id, i) { return SCI.renderStatic(byId[id], i + 1, withKey); }).join('');
+    pa.innerHTML = h; document.body.classList.add('printing');
+    var done = function () { document.body.classList.remove('printing'); window.removeEventListener('afterprint', done); };
+    window.addEventListener('afterprint', done); setTimeout(function () { window.print(); }, 150);
+  }
+
+  /* =====================  RESULTS TAB  ===================== */
+  var R = document.getElementById('tabResults'), loaded = null;
+  function pct(a, b) { return b ? Math.round(100 * a / b) : 0; }
+  function band(p) { return p >= 80 ? 'hi' : p >= 60 ? 'mid' : 'low'; }
+  var BAND_NAME = { hi: 'Secure', mid: 'Approaching', low: 'Reteach' };
+
+  function resultsHome() {
+    R.innerHTML = '<div class="card" style="margin-bottom:12px"><h3>Student results</h3><div id="rctl"></div></div><div id="rout"></div>';
+    var c = document.getElementById('rctl');
+    if (mode === 'server') {
+      var pass = sessionStorage.getItem('sci_pass') || '';
+      c.innerHTML = '<div class="field" style="max-width:340px"><label for="pw">Teacher passcode (set in README step 3)</label><input id="pw" type="password" value="' + esc(pass) + '"></div><button class="tbtn primary" id="ld" type="button">Load my assessments</button><div id="rmsg" class="small" style="margin-top:8px"></div><div id="alist"></div>';
+      document.getElementById('ld').onclick = function () {
+        var pw = document.getElementById('pw').value; sessionStorage.setItem('sci_pass', pw);
+        var m = document.getElementById('rmsg'); m.textContent = 'Loading...';
+        SCI.fetchJSON({ action: 'list', pass: pw }).then(function (j) {
+          if (!j.ok) { m.innerHTML = '<span class="banner bad" style="display:inline-block">' + esc(j.error || 'Could not load.') + '</span>'; return; }
+          m.textContent = j.assessments.length ? '' : 'No results have been submitted yet.'; listAssess(j.assessments, function (aid) { return SCI.fetchJSON({ action: 'results', aid: aid, pass: pw }).then(function (r) { if (!r.ok) throw new Error(r.error); return r.attempts; }); });
+        }).catch(function (e) { m.innerHTML = '<span class="banner bad" style="display:inline-block">Could not reach the Sheet: ' + esc(e.message) + '. Check SCRIPT_URL in config.js and that the web app is deployed to "Anyone".</span>'; });
+      };
+      if (pass) document.getElementById('ld').click();
+    } else {
+      var all = SCI.store('sci_local_attempts') || [], g = {};
+      all.forEach(function (a) { var x = g[a.aid] || (g[a.aid] = { aid: a.aid, title: a.title, n: 0, last: a.at }); x.n++; if (a.at > x.last) x.last = a.at; });
+      c.innerHTML = '<div class="banner warn"><b>Practice mode.</b> You see only tests taken on <b>this computer and this browser</b>. To collect results from students\' Chromebooks, connect the Google Sheet (README step 3).</div><div id="alist"></div>' +
+        '<div style="margin-top:8px"><button class="tbtn" id="smp" type="button">Add a sample class (24 made-up students) so I can see the report</button></div>';
+      listAssess(Object.keys(g).map(function (k) { return g[k]; }), function (aid) { return Promise.resolve(all.filter(function (a) { return a.aid === aid; })); });
+      document.getElementById('smp').onclick = function () {
+        var ids = T.sel.length ? T.sel.slice() : weekIds(1), aid = 'SAMPLE-' + Math.random().toString(36).slice(2, 6);
+        var rows = SCI.sampleClass(aid, (T.title || 'Week 1 Quiz') + ' (SAMPLE DATA)', ids, 24);
+        SCI.store('sci_local_attempts', (SCI.store('sci_local_attempts') || []).concat(rows)); resultsHome();
+      };
+    }
+  }
+  function listAssess(list, loader) {
+    var a = document.getElementById('alist'); a.innerHTML = list.length ? '<h4 style="margin:12px 0 4px">Choose an assessment</h4>' : '';
+    list.sort(function (x, y) { return (y.last || '') > (x.last || '') ? 1 : -1; }).forEach(function (x) {
+      var b = el('button', 'tbtn', esc(x.title) + ' &middot; ' + x.n + ' student' + (x.n === 1 ? '' : 's') + (x.last ? ' &middot; ' + new Date(x.last).toLocaleDateString() : '')); b.type = 'button'; b.style.margin = '3px 6px 3px 0';
+      b.onclick = function () { document.getElementById('rout').innerHTML = '<p>Loading...</p>'; loader(x.aid).then(function (rows) { loaded = { aid: x.aid, title: x.title, rows: rows }; dash(); }).catch(function (e) { document.getElementById('rout').innerHTML = '<div class="banner bad">' + esc(e.message) + '</div>'; }); };
+      a.appendChild(b);
+    });
+  }
+
+  function latestPer(rows) {
+    var m = {}; rows.slice().sort(function (a, b) { return (a.at || '') > (b.at || '') ? 1 : -1; }).forEach(function (a) { m[(a.last + '|' + a.first + '|' + a.period).toLowerCase()] = a; });
+    return Object.keys(m).map(function (k) { return m[k]; });
+  }
+  function dash(period) {
+    var out = document.getElementById('rout'), rows = latestPer(loaded.rows), periods = {};
+    rows.forEach(function (r) { periods[r.period] = 1; });
+    if (period) rows = rows.filter(function (r) { return r.period === period; });
+    if (!rows.length) { out.innerHTML = '<div class="banner info">No students yet.</div>'; return; }
+    var n = rows.length, pcts = rows.map(function (r) { return pct(r.score, r.possible); }).sort(function (a, b) { return a - b; });
+    var mean = Math.round(pcts.reduce(function (a, b) { return a + b; }, 0) / n), med = pcts[Math.floor(n / 2)];
+    var ids = []; rows[0].items.forEach(function (it) { ids.push(it.id); });
+    rows.forEach(function (r) { r.items.forEach(function (it) { if (ids.indexOf(it.id) < 0) ids.push(it.id); }); });
+    var IS = {}, STD = {}, TG = {};
+    ids.forEach(function (id) { IS[id] = { e: 0, p: 0, wrong: {}, tg: {} }; });
+    rows.forEach(function (r) {
+      var seen = {};
+      r.items.forEach(function (it) {
+        var s = IS[it.id], q = byId[it.id]; s.e += it.e; s.p += it.p;
+        var sd = STD[it.std] || (STD[it.std] = { e: 0, p: 0 }); sd.e += it.e; sd.p += it.p;
+        (it.tg || []).forEach(function (tg) { TG[tg] = TG[tg] || { n: 0, who: {} }; TG[tg].n++; TG[tg].who[r.last + r.first] = 1; s.tg[tg] = (s.tg[tg] || 0) + 1; });
+        if (q && it.r != null) {
+          if (q.t === 'mc' && it.r !== q.k) { s.wrong['o' + it.r] = (s.wrong['o' + it.r] || 0) + 1; }
+          if (q.t === 'ms') (it.r || []).forEach(function (x) { if (q.k.indexOf(x) < 0) s.wrong['o' + x] = (s.wrong['o' + x] || 0) + 1; });
+          if (q.t === 'mp') q.parts.forEach(function (p, pi) { if (it.r[pi] != null && it.r[pi] !== p.k) s.wrong['p' + pi + 'o' + it.r[pi]] = (s.wrong['p' + pi + 'o' + it.r[pi]] || 0) + 1; });
+        }
+      });
+    });
+    var itemList = ids.map(function (id) { var s = IS[id]; return { id: id, q: byId[id], pct: pct(s.e, s.p), s: s }; });
+    var worst = itemList.slice().sort(function (a, b) { return a.pct - b.pct; });
+    var tgs = Object.keys(TG).sort(function (a, b) { return TG[b].n - TG[a].n; });
+    var h = '';
+    h += '<div class="card" style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;align-items:center"><div><h2 style="margin:0">' + esc(loaded.title) + '</h2><div class="muted small">Each student\'s latest attempt is counted.' + (rows[0].sample ? ' <b style="color:#b91c1c">SAMPLE DATA, not real students.</b>' : '') + '</div></div>' +
+      '<div><label class="small"><b>Class period</b> <select id="per"><option value="">All periods</option>' + Object.keys(periods).sort().map(function (p) { return '<option' + (period === p ? ' selected' : '') + '>' + esc(p) + '</option>'; }).join('') + '</select></label> <button class="tbtn" id="csv" type="button">Download spreadsheet (CSV)</button> <button class="tbtn" id="pr" type="button">Print this report</button></div></div></div>';
+    h += '<div class="cards4"><div class="stat"><b>' + n + '</b>students</div><div class="stat"><b>' + mean + '%</b>class average</div><div class="stat"><b>' + med + '%</b>median</div><div class="stat"><b>' + rows.filter(function (r) { return pct(r.score, r.possible) < 60; }).length + '</b>students under 60%</div></div>';
+    /* reteach */
+    h += '<div class="reteach"><h3>Monday reteach: what to revisit</h3><div class="small muted">Chosen from the lowest-scoring questions and the most common wrong-answer ideas.</div>';
+    h += '<p style="margin:8px 0 2px"><b>Lowest-scoring questions</b></p><ol style="margin:0 0 8px;padding-left:22px">' + worst.slice(0, 3).map(function (w) { return '<li><b>' + w.id + '</b> (' + w.q.std + ' ' + esc(STANDARDS[w.q.std].short) + '): ' + w.pct + '% correct. <span class="muted">' + esc(qtext(w.q).slice(0, 110)) + '...</span></li>'; }).join('') + '</ol>';
+    h += '<p style="margin:8px 0 2px"><b>Most common wrong-answer ideas</b></p>' + (tgs.length ? '<ol style="margin:0;padding-left:22px">' + tgs.slice(0, 3).map(function (t) { return '<li><b>' + esc(MISC[t].name) + '</b> (' + Object.keys(TG[t].who).length + ' students)<br><span class="small">Reteach move: ' + esc(MISC[t].fix) + '</span></li>'; }).join('') + '</ol>' : '<div class="small">No wrong-answer ideas recorded.</div>') + '</div>';
+    /* standards */
+    h += '<div class="card" style="margin:12px 0"><h3>By standard</h3>' + Object.keys(STD).sort().map(function (s) { var p = pct(STD[s].e, STD[s].p); return '<div class="stdbar"><span><b>' + s + '</b> ' + esc(STANDARDS[s].short) + '</span><div class="bar"><i class="' + band(p) + '" style="width:' + p + '%"></i></div><span>' + p + '%</span></div>'; }).join('') + '<div class="small muted">Green 80% and up, orange 60 to 79%, red under 60%. These are practice indicators, not Georgia Milestones achievement levels.</div></div>';
+    /* items */
+    h += '<h3>Question analysis</h3><table class="rt" id="itbl"><thead><tr><th>#</th><th>Item</th><th>Standard</th><th>DOK</th><th class="sortable" id="sp">% correct &#9650;</th><th>Most common wrong answer</th></tr></thead><tbody>';
+    itemList.forEach(function (it, i) {
+      var q = it.q, best = null, bn = 0; Object.keys(it.s.wrong).forEach(function (k) { if (it.s.wrong[k] > bn) { bn = it.s.wrong[k]; best = k; } });
+      var wtxt = '-';
+      if (best) { var m = /^p(\d)o(\d+)$/.exec(best), o = /^o(\d+)$/.exec(best); if (m) wtxt = 'Part ' + (m[1] === '0' ? 'A' : 'B') + ': ' + SCI.strip(q.parts[+m[1]].o[+m[2]][0]); else if (o) wtxt = SCI.strip(q.o[+o[1]][0]); wtxt = esc(wtxt.slice(0, 120)) + ' <span class="muted">(' + bn + ')</span>'; var tg = (m ? q.parts[+m[1]].o[+m[2]][1] : q.o[+o[1]][1]); if (tg) wtxt += '<br><span class="pill mid">' + esc(MISC[tg].name) + '</span>'; }
+      else if (q.t === 'dd' || q.t === 'dnd') wtxt = '<span class="muted">(partial credit item)</span>';
+      h += '<tr class="' + band(it.pct) + '" data-p="' + it.pct + '"><td>' + (i + 1) + '</td><td><b>' + it.id + '</b></td><td>' + q.std + '</td><td>' + q.dok + '</td><td><b>' + it.pct + '%</b></td><td>' + wtxt + '</td></tr>';
+    });
+    h += '</tbody></table>';
+    /* students */
+    var stds = Object.keys(STD).sort();
+    h += '<h3>Students</h3><table class="rt"><thead><tr><th>Student</th><th>Period</th><th>Score</th><th>%</th><th>Status</th>' + stds.map(function (s) { return '<th>' + s + '</th>'; }).join('') + '<th>Time</th></tr></thead><tbody>';
+    rows.slice().sort(function (a, b) { return pct(a.score, a.possible) - pct(b.score, b.possible); }).forEach(function (r) {
+      var p = pct(r.score, r.possible), by = {}; r.items.forEach(function (it) { var b = by[it.std] || (by[it.std] = { e: 0, p: 0 }); b.e += it.e; b.p += it.p; });
+      h += '<tr><td>' + esc(r.last) + ', ' + esc(r.first) + '</td><td>' + esc(r.period) + '</td><td>' + r.score + '/' + r.possible + '</td><td><b>' + p + '%</b></td><td><span class="pill ' + band(p) + '">' + BAND_NAME[band(p)] + '</span></td>' +
+        stds.map(function (s) { var x = by[s]; if (!x) return '<td>-</td>'; var q = pct(x.e, x.p); return '<td><span class="pill ' + band(q) + '">' + q + '%</span></td>'; }).join('') + '<td>' + Math.floor((r.secs || 0) / 60) + ':' + ('0' + ((r.secs || 0) % 60)).slice(-2) + '</td></tr>';
+    });
+    h += '</tbody></table>';
+    out.innerHTML = h;
+    document.getElementById('per').onchange = function (e) { dash(e.target.value); };
+    document.getElementById('pr').onclick = function () { var pa = document.getElementById('printArea'); pa.innerHTML = out.innerHTML; document.body.classList.add('printing'); var done = function () { document.body.classList.remove('printing'); window.removeEventListener('afterprint', done); }; window.addEventListener('afterprint', done); setTimeout(function () { window.print(); }, 150); };
+    var asc = true; document.getElementById('sp').onclick = function () {
+      var tb = document.querySelector('#itbl tbody'), trs = Array.prototype.slice.call(tb.children); asc = !asc;
+      trs.sort(function (a, b) { return (asc ? 1 : -1) * (a.getAttribute('data-p') - b.getAttribute('data-p')); }).forEach(function (t) { tb.appendChild(t); }); this.innerHTML = '% correct ' + (asc ? '&#9650;' : '&#9660;');
+    };
+    document.getElementById('csv').onclick = function () {
+      function c(v) { return '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"'; }
+      var lines = [['Last', 'First', 'Period', 'Score', 'Possible', 'Percent', 'Seconds'].concat(ids.map(function (id) { return id + ' (' + byId[id].std + ')'; })).map(c).join(',')];
+      rows.forEach(function (r) { var m = {}; r.items.forEach(function (it) { m[it.id] = it.e; }); lines.push([r.last, r.first, r.period, r.score, r.possible, pct(r.score, r.possible), r.secs].concat(ids.map(function (id) { return m[id] == null ? '' : m[id]; })).map(c).join(',')); });
+      var blob = new Blob([lines.join('\n')], { type: 'text/csv' }), a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = (loaded.title || 'results').replace(/[^a-z0-9]+/gi, '_') + '.csv'; a.click();
+    };
+  }
+
+  /* =====================  MAP TAB  ===================== */
+  function map() {
+    var M = document.getElementById('tabMap'), h = '<div class="card"><h3>What is in the bank</h3><p>Matter (S8P1) is about <b>28% of the Grade 8 Science Milestones</b>, roughly 13 of 46 points. Every item below is tagged to a Matter standard and a Depth of Knowledge level. Counts are items (points in parentheses).</p>';
+    var stds = Object.keys(STANDARDS).sort();
+    h += '<table class="rt"><thead><tr><th>Week</th>' + stds.map(function (s) { return '<th>' + s + '<br><span class="small">' + esc(STANDARDS[s].short) + '</span></th>'; }).join('') + '<th>DOK 1 / 2 / 3 (points)</th><th>Total</th></tr></thead><tbody>';
+    [1, 2, 3, 4, 5].forEach(function (w) {
+      var qs = Q.filter(function (q) { return q.wk === w; }), d = [0, 0, 0, 0], tp = 0;
+      qs.forEach(function (q) { d[q.dok] += q.p; tp += q.p; });
+      h += '<tr><td><b>' + esc(WEEKS[w].title) + '</b></td>' + stds.map(function (s) { var c = qs.filter(function (q) { return q.std === s; }); return '<td>' + (c.length ? c.length + ' (' + c.reduce(function (a, q) { return a + q.p; }, 0) + ')' : '-') + '</td>'; }).join('') + '<td>' + d[1] + ' / ' + d[2] + ' / ' + d[3] + '</td><td>' + qs.length + ' items (' + tp + ' pts)</td></tr>';
+    });
+    h += '</tbody></table><p class="small muted">Milestones blueprint targets by points: DOK 1 about 5 to 15%, DOK 2 about 55 to 65%, DOK 3 about 25 to 35%. Item formats follow the blueprint: selected response, multiple select, drag and drop, drop-down, and two-part items, with 2-point technology-enhanced items.</p></div>';
+    h += '<div class="card" style="margin-top:12px"><h3>Print the whole bank</h3><p>Use this to review every item and its rationale before you choose.</p><button class="tbtn primary" id="pbk" type="button">Print full bank with answer key</button> <button class="tbtn" id="pbs" type="button">Print full bank, student view</button></div>';
+    h += '<div class="card" style="margin-top:12px"><h3>Standards covered</h3><table class="rt"><tbody>' + stds.map(function (s) { return '<tr><td><b>' + s + '</b></td><td>' + esc(STANDARDS[s].full) + '</td></tr>'; }).join('') + '</tbody></table></div>';
+    M.innerHTML = h;
+    document.getElementById('pbk').onclick = function () { printSet(Q.map(function (q) { return q.id; }), true, 'Grade 8 Science Matter Item Bank'); };
+    document.getElementById('pbs').onclick = function () { printSet(Q.map(function (q) { return q.id; }), false, 'Grade 8 Science Matter Item Bank'); };
+  }
+
+  /* ---------- go ---------- */
+  pre(); filt(); draw(); drawTray(); map();
+  var qs = new URLSearchParams(location.search);
+  if (qs.get('print') === 'bank' || qs.get('print') === 'bankstudent') {
+    var withKey = qs.get('print') === 'bank', ids = Q.map(function (q) { return q.id; }), pa = document.getElementById('printArea'), pts = 0; ids.forEach(function (id) { pts += byId[id].p; });
+    var h = '<div class="phead"><div><b>Grade 8 Science: Unit 5 Matter (S8P1) Item Bank' + (withKey ? ' with Answer Key' : '') + '</b><br><span class="small">' + ids.length + ' items &middot; ' + pts + ' points &middot; Georgia Milestones-style</span></div></div>';
+    [1, 2, 3, 4, 5].forEach(function (w) {
+      h += '<h2 class="' + (w > 1 ? 'pbreak' : '') + '" style="margin-top:8px">' + esc(WEEKS[w].title) + '</h2>';
+      Q.filter(function (q) { return q.wk === w; }).forEach(function (q, i) { h += SCI.renderStatic(q, i + 1, withKey); });
+    });
+    pa.innerHTML = h; document.body.classList.add('show');
+  }
+})();
+</script>
+</body>
+</html>
