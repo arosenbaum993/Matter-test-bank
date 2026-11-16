@@ -4,7 +4,7 @@
    While SCRIPT_URL is empty the tool runs in PRACTICE MODE: results are kept only in the browser on the
    computer where the test was taken, and both the student page and the teacher page say so on screen. */
 window.SCI_CONFIG = {
-  SCRIPT_URL: "",
+  SCRIPT_URL: "https://script.google.com/macros/s/AKfycbxDeBeGHEC5qp96rel9WnQmxaDczEWlZLx45uEY3avYre6n6KcGZ_FtABWR0Wp6fpbAaw/exec",
   SCHOOL: "McIntosh County Middle School",
   COURSE: "Grade 8 Science",
   PERIODS: ["1", "2", "3", "4", "5", "6", "7", "8"]
