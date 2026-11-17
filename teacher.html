@@ -118,6 +118,7 @@
       '<div class="field"><label class="inl"><input type="checkbox" id="sh"' + (T.shuffle ? ' checked' : '') + '> Shuffle answer choices for each student</label></div>' +
       '<div class="field"><label for="fb">After students submit, show them</label><select id="fb"><option value="full">Score, topics, and each question with the answer explained</option><option value="score">Score and topics only</option><option value="none">Nothing (I will review with the class)</option></select></div>' +
       '<div class="field"><label for="mn">Time limit in minutes (0 = none)</label><input id="mn" type="number" min="0" max="120" value="' + T.minutes + '"></div>' +
+      '<p class="small muted" style="margin:0 0 8px">While students test, copy and paste are blocked and each time they leave the page is logged (they get one warning).</p>' +
       '<button class="tbtn primary" id="mk" type="button" ' + (T.sel.length ? '' : 'disabled') + '>Create student link</button> ' +
       '<div id="linkOut"></div>' +
       '<div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap"><button class="tbtn" id="pS" type="button" ' + (T.sel.length ? '' : 'disabled') + '>Print student copy</button><button class="tbtn" id="pK" type="button" ' + (T.sel.length ? '' : 'disabled') + '>Print answer key</button></div>' +
@@ -215,6 +216,12 @@
     });
   }
 
+  function leftCell(r) {
+    if (r.leaves == null) return '<span class="muted" title="This attempt was submitted before page-leave tracking was added">n/a</span>';
+    if (!r.leaves) return '0';
+    var a = r.away || 0, m = Math.floor(a / 60), s = ('0' + (a % 60)).slice(-2);
+    return '<span class="pill warnp' + (r.leaves >= 3 ? ' hard' : '') + '" title="Away ' + m + ':' + s + ' in total">' + r.leaves + (r.leaves === 1 ? ' time' : ' times') + ' &middot; ' + m + ':' + s + '</span>';
+  }
   function latestPer(rows) {
     var m = {}; rows.slice().sort(function (a, b) { return (a.at || '') > (b.at || '') ? 1 : -1; }).forEach(function (a) { m[(a.last + '|' + a.first + '|' + a.period).toLowerCase()] = a; });
     return Object.keys(m).map(function (k) { return m[k]; });
@@ -249,7 +256,7 @@
     var h = '';
     h += '<div class="card" style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;align-items:center"><div><h2 style="margin:0">' + esc(loaded.title) + '</h2><div class="muted small">Each student\'s latest attempt is counted.' + (rows[0].sample ? ' <b style="color:#b91c1c">SAMPLE DATA, not real students.</b>' : '') + '</div></div>' +
       '<div><label class="small"><b>Class period</b> <select id="per"><option value="">All periods</option>' + Object.keys(periods).sort().map(function (p) { return '<option' + (period === p ? ' selected' : '') + '>' + esc(p) + '</option>'; }).join('') + '</select></label> <button class="tbtn" id="csv" type="button">Download spreadsheet (CSV)</button> <button class="tbtn" id="pr" type="button">Print this report</button></div></div></div>';
-    h += '<div class="cards4"><div class="stat"><b>' + n + '</b>students</div><div class="stat"><b>' + mean + '%</b>class average</div><div class="stat"><b>' + med + '%</b>median</div><div class="stat"><b>' + rows.filter(function (r) { return pct(r.score, r.possible) < 60; }).length + '</b>students under 60%</div></div>';
+    h += '<div class="cards4"><div class="stat"><b>' + n + '</b>students</div><div class="stat"><b>' + mean + '%</b>class average</div><div class="stat"><b>' + med + '%</b>median</div><div class="stat"><b>' + rows.filter(function (r) { return pct(r.score, r.possible) < 60; }).length + '</b>students under 60%</div><div class="stat"><b>' + rows.filter(function (r) { return (r.leaves || 0) > 0; }).length + '</b>left the test page</div></div>';
     /* reteach */
     h += '<div class="reteach"><h3>Monday reteach: what to revisit</h3><div class="small muted">Chosen from the lowest-scoring questions and the most common wrong-answer ideas.</div>';
     h += '<p style="margin:8px 0 2px"><b>Lowest-scoring questions</b></p><ol style="margin:0 0 8px;padding-left:22px">' + worst.slice(0, 3).map(function (w) { return '<li><b>' + w.id + '</b> (' + w.q.std + ' ' + esc(STANDARDS[w.q.std].short) + '): ' + w.pct + '% correct. <span class="muted">' + esc(qtext(w.q).slice(0, 110)) + '...</span></li>'; }).join('') + '</ol>';
@@ -268,13 +275,13 @@
     h += '</tbody></table>';
     /* students */
     var stds = Object.keys(STD).sort();
-    h += '<h3>Students</h3><table class="rt"><thead><tr><th>Student</th><th>Period</th><th>Score</th><th>%</th><th>Status</th>' + stds.map(function (s) { return '<th>' + s + '</th>'; }).join('') + '<th>Time</th></tr></thead><tbody>';
+    h += '<h3>Students</h3><table class="rt"><thead><tr><th>Student</th><th>Period</th><th>Score</th><th>%</th><th>Status</th>' + stds.map(function (s) { return '<th>' + s + '</th>'; }).join('') + '<th>Time</th><th title="How many times the student left the test page, and how long they were away">Left page</th></tr></thead><tbody>';
     rows.slice().sort(function (a, b) { return pct(a.score, a.possible) - pct(b.score, b.possible); }).forEach(function (r) {
       var p = pct(r.score, r.possible), by = {}; r.items.forEach(function (it) { var b = by[it.std] || (by[it.std] = { e: 0, p: 0 }); b.e += it.e; b.p += it.p; });
       h += '<tr><td>' + esc(r.last) + ', ' + esc(r.first) + '</td><td>' + esc(r.period) + '</td><td>' + r.score + '/' + r.possible + '</td><td><b>' + p + '%</b></td><td><span class="pill ' + band(p) + '">' + BAND_NAME[band(p)] + '</span></td>' +
-        stds.map(function (s) { var x = by[s]; if (!x) return '<td>-</td>'; var q = pct(x.e, x.p); return '<td><span class="pill ' + band(q) + '">' + q + '%</span></td>'; }).join('') + '<td>' + Math.floor((r.secs || 0) / 60) + ':' + ('0' + ((r.secs || 0) % 60)).slice(-2) + '</td></tr>';
+        stds.map(function (s) { var x = by[s]; if (!x) return '<td>-</td>'; var q = pct(x.e, x.p); return '<td><span class="pill ' + band(q) + '">' + q + '%</span></td>'; }).join('') + '<td>' + Math.floor((r.secs || 0) / 60) + ':' + ('0' + ((r.secs || 0) % 60)).slice(-2) + '</td><td>' + leftCell(r) + '</td></tr>';
     });
-    h += '</tbody></table>';
+    h += '</tbody></table><p class="small muted">Left page: how many times the student switched tabs or windows during the test, and the total time away. A browser cannot block this, so use it as a conversation starter, not proof. A student can also trigger it by accident (a notification, a pop-up).</p>';
     out.innerHTML = h;
     document.getElementById('per').onchange = function (e) { dash(e.target.value); };
     document.getElementById('pr').onclick = function () { var pa = document.getElementById('printArea'); pa.innerHTML = out.innerHTML; document.body.classList.add('printing'); var done = function () { document.body.classList.remove('printing'); window.removeEventListener('afterprint', done); }; window.addEventListener('afterprint', done); setTimeout(function () { window.print(); }, 150); };
@@ -284,8 +291,8 @@
     };
     document.getElementById('csv').onclick = function () {
       function c(v) { return '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"'; }
-      var lines = [['Last', 'First', 'Period', 'Score', 'Possible', 'Percent', 'Seconds'].concat(ids.map(function (id) { return id + ' (' + byId[id].std + ')'; })).map(c).join(',')];
-      rows.forEach(function (r) { var m = {}; r.items.forEach(function (it) { m[it.id] = it.e; }); lines.push([r.last, r.first, r.period, r.score, r.possible, pct(r.score, r.possible), r.secs].concat(ids.map(function (id) { return m[id] == null ? '' : m[id]; })).map(c).join(',')); });
+      var lines = [['Last', 'First', 'Period', 'Score', 'Possible', 'Percent', 'Seconds', 'Times left page', 'Seconds away'].concat(ids.map(function (id) { return id + ' (' + byId[id].std + ')'; })).map(c).join(',')];
+      rows.forEach(function (r) { var m = {}; r.items.forEach(function (it) { m[it.id] = it.e; }); lines.push([r.last, r.first, r.period, r.score, r.possible, pct(r.score, r.possible), r.secs, r.leaves == null ? '' : r.leaves, r.away == null ? '' : r.away].concat(ids.map(function (id) { return m[id] == null ? '' : m[id]; })).map(c).join(',')); });
       var blob = new Blob([lines.join('\n')], { type: 'text/csv' }), a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = (loaded.title || 'results').replace(/[^a-z0-9]+/gi, '_') + '.csv'; a.click();
     };
   }
