@@ -537,3 +537,4 @@ Carbon monoxide reacts with oxygen. The model shows the reactants. Each ball is 
 - Answer: Part A: b) Model B | Part B: a) The atoms in the reactants are only rearranged, so the products must have 2 carbon atoms and 4 oxygen atoms.
 - Why: Part A: The reactants have 2 carbon atoms (in 2 CO) and 4 oxygen atoms (2 in CO plus 2 in O2). Two CO2 molecules have 2 carbon atoms and 4 oxygen atoms. Part B: Atoms are conserved, so the products must contain the same atoms. The number of molecules can change (3 molecules become 2).
 
+
