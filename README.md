@@ -57,3 +57,18 @@ If you change `Code.gs` later, use Deploy > Manage deployments > pencil > Versio
 - The answer key travels with the page code, so a determined student could find it. This is for practice, not secure testing.
 - Item W4-10 (is this equation balanced?) goes a little past the GaDOE teacher notes. It is tagged "beyond GaDOE notes". Use the filter to hide it.
 - Print the whole bank with answers from **Bank map and printing**.
+
+## Lockdown helpers (on automatically)
+
+While a student is testing:
+- Copy, cut, paste, right-click, and text selection are blocked.
+- Each time the student leaves the page (switches tabs or windows), it is logged. They get **one** warning when they come back. Their answers stay saved.
+- Your results page shows **Left page** for each student (how many times, and total time away), a count at the top, and two columns in the CSV.
+
+These are speed bumps, not a lock. A web page cannot stop a Chromebook from switching tabs, take screenshots away, or hide the page source. For a real lock, ask your tech department to run the quiz address in kiosk mode from Google Admin.
+A student can trigger "Left page" by accident (a notification, a pop-up), so use it to start a conversation, not as proof.
+
+## If you update these files later
+
+Upload the changed files to GitHub (same names, same folder). Student links keep working. If `apps-script/Code.gs` changed, paste it into Apps Script and Deploy > Manage deployments > pencil > Version: New version > Deploy. The Sheet works without this update, but it adds the "Times left page" and "Seconds away" columns.
+
