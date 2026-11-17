@@ -196,3 +196,11 @@ body.show #app { display: none; }
 .pitem.pk .figrow, .pitem.pk .figone { zoom: .72; margin: 6px 0; }
 .pitem.pk .legend { zoom: .85; }
 .pitem.pk .keyline { margin-top: 4px; padding: 4px 8px; font-size: 10.5px; }
+
+/* test guard */
+body.testguard .frame { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.guardwarn { position: fixed; inset: 0; z-index: 9999; background: rgba(15, 23, 42, .78); display: flex; align-items: center; justify-content: center; padding: 20px; }
+.guardwarn .card { max-width: 460px; background: #fff; border: 4px solid #f59e0b; border-radius: 12px; padding: 20px 24px; }
+.guardwarn h2 { margin-top: 0; }
+.pill.warnp { background: #fde68a; color: #78350f; }
+.pill.warnp.hard { background: #fecaca; color: #7f1d1d; }
