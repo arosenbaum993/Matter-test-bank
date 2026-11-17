@@ -11,7 +11,7 @@
  * Note: "Anyone" means anyone with the URL can submit a result, but only someone with the passcode can read results.
  */
 
-var ATTEMPT_HEAD = ['Timestamp', 'Assessment ID', 'Title', 'Last', 'First', 'Period', 'Score', 'Possible', 'Percent', 'Seconds', 'Submission ID', 'Payload JSON'];
+var ATTEMPT_HEAD = ['Timestamp', 'Assessment ID', 'Title', 'Last', 'First', 'Period', 'Score', 'Possible', 'Percent', 'Seconds', 'Submission ID', 'Payload JSON', 'Times left page', 'Seconds away'];
 var ITEM_HEAD = ['Timestamp', 'Assessment ID', 'Last', 'First', 'Period', 'Item', 'Standard', 'DOK', 'Type', 'Earned', 'Possible', 'Response', 'Misconception tags'];
 
 function sheet_(name, head) {
@@ -23,6 +23,9 @@ function sheet_(name, head) {
     sh.setFrozenRows(1);
     sh.getRange(1, 1, 1, head.length).setFontWeight('bold');
   }
+  // An older Sheet may be missing the newest header cells: add them (new columns go at the end).
+  var have = sh.getRange(1, 1, 1, head.length).getValues()[0];
+  for (var i = 0; i < head.length; i++) if (!have[i]) sh.getRange(1, i + 1).setValue(head[i]).setFontWeight('bold');
   return sh;
 }
 
@@ -42,7 +45,7 @@ function doPost(e) {
     for (var i = 0; i < ids.length; i++) if (ids[i][0] === p.sub) return json_({ ok: true, duplicate: true });
     var now = new Date();
     var pct = p.possible ? Math.round(100 * p.score / p.possible) : 0;
-    at.appendRow([now, p.aid, p.title, p.last, p.first, p.period, p.score, p.possible, pct, p.secs, p.sub, JSON.stringify(p)]);
+    at.appendRow([now, p.aid, p.title, p.last, p.first, p.period, p.score, p.possible, pct, p.secs, p.sub, JSON.stringify(p), p.leaves || 0, p.away || 0]);
     var it = sheet_('Items', ITEM_HEAD);
     var rows = p.items.map(function (x) {
       return [now, p.aid, p.last, p.first, p.period, x.id, x.std, x.dok, x.t, x.e, x.p, JSON.stringify(x.r), (x.tg || []).join(', ')];
