@@ -59,8 +59,48 @@
     document.getElementById('fn').focus();
   }
 
+  /* ---------- test guard: copy block and leave log ---------- */
+  /* Soft deterrents only. A web page cannot truly lock a Chromebook; use kiosk mode from Google Admin for that. */
+  var guard = { on: false, awayAt: 0 };
+  function guardOn() { guard.on = true; document.body.classList.add('testguard'); }
+  function guardOff() { closeAway(); guard.on = false; document.body.classList.remove('testguard'); }
+  function leaveStart() {
+    if (!guard.on || !S || S.done || guard.awayAt) return;
+    guard.awayAt = Date.now();
+    S.leaves = (S.leaves || 0) + 1; S.log = S.log || [];
+    if (S.log.length < 40) S.log.push({ at: new Date().toISOString(), s: 0 });
+    persist();
+  }
+  function closeAway() {
+    if (!guard.awayAt || !S) { guard.awayAt = 0; return 0; }
+    var secs = Math.round((Date.now() - guard.awayAt) / 1000); guard.awayAt = 0;
+    S.away = (S.away || 0) + secs;
+    if (S.log && S.log.length) S.log[S.log.length - 1].s = secs;
+    persist(); return secs;
+  }
+  function leaveEnd() {
+    if (!guard.awayAt) return;
+    closeAway();
+    if (guard.on && S && !S.done && !S.warned) { S.warned = true; persist(); showWarn(); }
+  }
+  function showWarn() {
+    if (document.getElementById('guardwarn')) return;
+    var o = el('div', 'guardwarn'); o.id = 'guardwarn'; o.setAttribute('role', 'alertdialog'); o.setAttribute('aria-modal', 'true'); o.setAttribute('aria-labelledby', 'gwt');
+    o.innerHTML = '<div class="card"><h2 id="gwt">You left the test page</h2><p>Your teacher can see when a student leaves the test page. Stay on this page until you submit.</p><p class="muted">You only get this warning once. Your answers are still saved.</p><button class="tbtn primary" id="gwb" type="button">Back to my test</button></div>';
+    document.body.appendChild(o);
+    var b = document.getElementById('gwb'); b.onclick = function () { o.remove(); }; b.focus();
+  }
+  ['copy', 'cut', 'paste', 'contextmenu'].forEach(function (ev) { document.addEventListener(ev, function (e) { if (guard.on) e.preventDefault(); }, true); });
+  document.addEventListener('keydown', function (e) {
+    if (guard.on && (e.ctrlKey || e.metaKey) && 'cxvaspu'.indexOf(String(e.key).toLowerCase()) > -1 && String(e.key).length === 1) e.preventDefault();
+  }, true);
+  document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'hidden') leaveStart(); else leaveEnd(); });
+  window.addEventListener('blur', function () { setTimeout(function () { if (!document.hasFocus()) leaveStart(); }, 250); });
+  window.addEventListener('focus', function () { leaveEnd(); });
+
   /* ---------- test screen ---------- */
   function test() {
+    guardOn();
     var f = frame(), n = A.ids.length;
     var top = el('div', 'topbar'), mid = el('div'), bot = el('div', 'bottombar');
     var ttl = el('div', 'ttl', esc(A.title) + ' &middot; ' + esc(S.first) + ' ' + esc(S.last));
@@ -140,10 +180,11 @@
       return { id: id, std: q.std, dok: q.dok, t: q.t, p: q.p, e: sc.e, r: a === undefined ? null : a, tg: sc.tags };
     });
     return { v: 1, sub: S.sub, aid: A.id, title: A.title, first: S.first, last: S.last, period: S.period, score: e, possible: p,
-      secs: Math.round((Date.now() - S.start) / 1000), at: new Date().toISOString(), items: items };
+      secs: Math.round((Date.now() - S.start) / 1000), at: new Date().toISOString(), leaves: S.leaves || 0, away: S.away || 0, leavelog: (S.log || []).slice(0, 20), items: items };
   }
   function submit(timeUp) {
-    clearInterval(tick); window.onbeforeunload = null;
+    clearInterval(tick); window.onbeforeunload = null; guardOff();
+    var w0 = document.getElementById('guardwarn'); if (w0) w0.remove();
     var payload = buildPayload();
     S.done = true; S.payload = payload; persist();
     var f = frame(), g = el('div', 'gate');
