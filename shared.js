@@ -290,6 +290,7 @@ var SCI = (function () {
     var names = [['Avery', 'Brooks'], ['Marcus', 'Taylor'], ['Hannah', 'Reed'], ['Jaylen', 'Williams'], ['Sofia', 'Martin'], ['Ethan', 'Coleman'], ['Naomi', 'Jackson'], ['Carter', 'Dixon'], ['Imani', 'Porter'], ['Owen', 'Sanders'], ['Zoe', 'Hall'], ['Isaiah', 'King'], ['Lily', 'Green'], ['Micah', 'Lewis'], ['Grace', 'Fisher'], ['Andre', 'Nash'], ['Mia', 'Vaughn'], ['Landon', 'Adams'], ['Ruby', 'Ellis'], ['Elijah', 'Quinn'], ['Tessa', 'Owens'], ['Xavier', 'Young'], ['Nora', 'Zimmer'], ['Dylan', 'Underwood']];
     var r = rng('sample' + aid), out = [], tags = Object.keys(MISC);
     for (var s = 0; s < Math.min(n || 24, names.length); s++) {
+      var lv = r() < 0.22 ? 1 + Math.floor(r() * 4) : 0;
       var theta = 0.25 + r() * 0.7, items = [], e = 0, p = 0;
       ids.forEach(function (id) {
         var q = byId[id], base = theta - (q.dok - 1) * 0.12 + (r() - 0.5) * 0.25, a;
@@ -302,7 +303,7 @@ var SCI = (function () {
         var sc = score(q, a); e += sc.e; p += q.p;
         items.push({ id: id, std: q.std, dok: q.dok, t: q.t, p: q.p, e: sc.e, r: a, tg: sc.tags });
       });
-      out.push({ v: 1, sub: 'S' + aid + s, aid: aid, title: title, first: names[s][0], last: names[s][1], period: String(1 + (s % 3)), score: e, possible: p, secs: 600 + Math.floor(r() * 900), at: new Date().toISOString(), sample: true, items: items });
+      out.push({ v: 1, sub: 'S' + aid + s, aid: aid, title: title, first: names[s][0], last: names[s][1], period: String(1 + (s % 3)), score: e, possible: p, secs: 600 + Math.floor(r() * 900), at: new Date().toISOString(), sample: true, leaves: lv, away: lv ? lv * (8 + Math.floor(r() * 50)) : 0, leavelog: [], items: items });
     }
     return out;
   }
